@@ -122,7 +122,6 @@ const QuestionsPage = () => {
       const lines = doc.splitTextToSize(`${index + 1}. ${item.question}`, 180);
       doc.text(lines, 14, y);
       y += lines.length * 6;
-      doc.text(`(${item.location}, ${formatDate(item.attendedDate)})`, 14, y);
       y += 10;
       if (y > 270) {
         doc.addPage();
