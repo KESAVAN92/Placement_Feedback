@@ -42,6 +42,16 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Provide a simple root response so the deployment shows a healthy endpoint.
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "Placement Feedback API is running." });
+});
+
+// Suppress favicon 404 noise.
+app.get("/favicon.ico", (req, res) => {
+  res.sendStatus(204);
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/admin", adminRoutes);
