@@ -1,16 +1,23 @@
 import React, { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import FeedbackCard from "../components/FeedbackCard";
 import api from "../services/api";
 
 const AdminDashboardPage = () => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [companyForm, setCompanyForm] = useState({ name: "", category: "Software" });
+  const [error, setError] = useState("");
 
   const loadData = async () => {
-    const { data } = await api.get("/admin/feedbacks");
-    setFeedbacks(data.feedbacks);
-    setCompanies(data.companies);
+    try {
+      const { data } = await api.get("/admin/feedbacks");
+      setFeedbacks(data.feedbacks);
+      setCompanies(data.companies);
+      setError("");
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to load admin data.");
+    }
   };
 
   useEffect(() => {
@@ -18,20 +25,32 @@ const AdminDashboardPage = () => {
   }, []);
 
   const handleDeleteFeedback = async (id) => {
-    await api.delete(`/admin/feedback/${id}`);
-    loadData();
+    try {
+      await api.delete(`/admin/feedback/${id}`);
+      loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to delete feedback.");
+    }
   };
 
   const handleCreateCompany = async (event) => {
     event.preventDefault();
-    await api.post("/companies", companyForm);
-    setCompanyForm({ name: "", category: "Software" });
-    loadData();
+    try {
+      await api.post("/companies", companyForm);
+      setCompanyForm({ name: "", category: "Software" });
+      loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to add company.");
+    }
   };
 
   const handleDeleteCompany = async (id) => {
-    await api.delete(`/companies/${id}`);
-    loadData();
+    try {
+      await api.delete(`/companies/${id}`);
+      loadData();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to delete company.");
+    }
   };
 
   return (
@@ -84,19 +103,11 @@ const AdminDashboardPage = () => {
 
         <div className="rounded-[2rem] bg-white p-8 shadow-lg">
           <h2 className="text-2xl font-bold text-slate-900">All Feedbacks</h2>
-          <div className="mt-6 space-y-4">
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+          <div className="mt-6 space-y-5">
             {feedbacks.map((feedback) => (
-              <div key={feedback._id} className="rounded-2xl border border-slate-200 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-semibold text-slate-900">{feedback.companyName}</p>
-                    <p className="text-sm text-slate-500">
-                      {feedback.studentId?.name} • {feedback.studentId?.email}
-                    </p>
-                    <p className="mt-2 text-sm text-slate-500">
-                      {feedback.location} • {new Date(feedback.attendedDate).toLocaleDateString("en-GB")}
-                    </p>
-                  </div>
+              <div key={feedback._id} className="space-y-3">
+                <div className="flex justify-end">
                   <button
                     type="button"
                     onClick={() => handleDeleteFeedback(feedback._id)}
@@ -105,7 +116,7 @@ const AdminDashboardPage = () => {
                     Delete
                   </button>
                 </div>
-                <p className="mt-4 text-sm text-slate-600">{feedback.tips || feedback.struggles || "No extra notes."}</p>
+                <FeedbackCard feedback={feedback} />
               </div>
             ))}
           </div>

@@ -2,44 +2,59 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import api from "../services/api";
+import { buildRoundTitle, roundTypeSuggestions } from "../utils/rounds";
+
+const createRound = (index) => ({
+  type: "",
+  title: `Round ${index + 1}`,
+  questions: ""
+});
+
+const resizeRoundDetails = (roundDetails, targetCount) =>
+  Array.from({ length: targetCount }, (_, index) => ({
+    ...(roundDetails[index] || createRound(index)),
+    title: roundDetails[index]?.title || buildRoundTitle(roundDetails[index], index)
+  }));
 
 const initialForm = {
   companyName: "",
   category: "Software",
   location: "",
+  attendedCollegeCampus: "",
   attendedDate: "",
   rounds: 1,
-  aptitudeQuestions: "",
-  codingQuestions: "",
-  interviewQuestions: "",
-  extraRoundQuestions: ["", ""],
+  roundDetails: [createRound(0)],
   tips: "",
   struggles: ""
 };
-
-const roundFieldLabels = [
-  { key: "aptitudeQuestions", placeholder: "Round 1: Aptitude questions" },
-  { key: "codingQuestions", placeholder: "Round 2: Coding questions" },
-  { key: "interviewQuestions", placeholder: "Round 3: Interview questions" },
-  { key: "extraRoundQuestions", placeholder: "Round 4: Additional round questions" },
-  { key: "extraRoundQuestions", placeholder: "Round 5: Additional round questions" }
-];
 
 const SubmitFeedbackPage = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState(initialForm);
   const [companies, setCompanies] = useState([]);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const rounds = Math.min(5, Math.max(1, Number(formData.rounds) || 1));
 
   useEffect(() => {
     const loadCompanies = async () => {
-      const { data } = await api.get("/companies");
-      setCompanies(data);
+      try {
+        const { data } = await api.get("/companies");
+        setCompanies(data);
+      } catch (err) {
+        setError(err.response?.data?.message || "Unable to load companies.");
+      }
     };
 
     loadCompanies();
   }, []);
+
+  useEffect(() => {
+    setFormData((current) => ({
+      ...current,
+      roundDetails: resizeRoundDetails(current.roundDetails, rounds)
+    }));
+  }, [rounds]);
 
   const handleCompanyChange = (value) => {
     const selected = companies.find((item) => item.name.toLowerCase() === value.trim().toLowerCase());
@@ -50,26 +65,47 @@ const SubmitFeedbackPage = () => {
     }));
   };
 
-  const handleExtraRoundChange = (index, value) => {
-    setFormData((current) => {
-      const extraRoundQuestions = [...current.extraRoundQuestions];
-      extraRoundQuestions[index] = value;
-      return { ...current, extraRoundQuestions };
-    });
+  const handleRoundChange = (index, field, value) => {
+    setFormData((current) => ({
+      ...current,
+      roundDetails: current.roundDetails.map((round, roundIndex) =>
+        roundIndex === index
+          ? {
+              ...round,
+              [field]: value,
+              title: field === "type" ? buildRoundTitle({ ...round, type: value }, index) : round.title
+            }
+          : round
+      )
+    }));
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    await api.post("/feedback/submit", { ...formData, rounds });
-    setMessage("Feedback submitted successfully.");
-    setTimeout(() => navigate(`/company/${encodeURIComponent(formData.companyName)}`), 700);
+    setError("");
+    setMessage("");
+
+    try {
+      await api.post("/feedback/submit", {
+        ...formData,
+        rounds,
+        roundDetails: formData.roundDetails.slice(0, rounds)
+      });
+
+      setMessage("Feedback submitted successfully.");
+      setTimeout(() => navigate(`/company/${encodeURIComponent(formData.companyName)}`), 700);
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to submit feedback.");
+    }
   };
 
   return (
     <Layout>
       <div className="mx-auto max-w-4xl rounded-[2rem] bg-white p-8 shadow-lg">
         <h1 className="text-3xl font-bold text-slate-900">Submit Placement Feedback</h1>
-        <p className="mt-2 text-sm text-slate-500">The question boxes accept one question per line.</p>
+        <p className="mt-2 text-sm text-slate-500">
+          Enter the number of rounds first, then describe each round based on the actual company process. Add one question per line.
+        </p>
 
         <form onSubmit={handleSubmit} className="mt-8 grid gap-4 md:grid-cols-2">
           <input
@@ -105,6 +141,14 @@ const SubmitFeedbackPage = () => {
             required
           />
           <input
+            type="text"
+            placeholder="Attended college campus"
+            className="rounded-2xl border-slate-200"
+            value={formData.attendedCollegeCampus}
+            onChange={(e) => setFormData({ ...formData, attendedCollegeCampus: e.target.value })}
+            required
+          />
+          <input
             type="date"
             className="rounded-2xl border-slate-200"
             value={formData.attendedDate}
@@ -118,28 +162,42 @@ const SubmitFeedbackPage = () => {
             placeholder="Enter number of rounds"
             className="rounded-2xl border-slate-200 md:col-span-2"
             value={formData.rounds}
-            onChange={(e) => setFormData({ ...formData, rounds: e.target.value })}
+            onChange={(e) => setFormData((current) => ({ ...current, rounds: e.target.value }))}
             required
           />
 
-          {roundFieldLabels.slice(0, rounds).map((field, index) => (
-            <textarea
-              key={`${field.key}-${index}`}
-              rows="5"
-              placeholder={field.placeholder}
-              className="rounded-2xl border-slate-200 md:col-span-2"
-              value={
-                field.key === "extraRoundQuestions"
-                  ? formData.extraRoundQuestions[index - 3] || ""
-                  : formData[field.key]
-              }
-              onChange={(e) =>
-                field.key === "extraRoundQuestions"
-                  ? handleExtraRoundChange(index - 3, e.target.value)
-                  : setFormData({ ...formData, [field.key]: e.target.value })
-              }
-            />
+          {formData.roundDetails.slice(0, rounds).map((round, index) => (
+            <div key={`round-${index}`} className="rounded-3xl border border-slate-200 p-5 md:col-span-2">
+              <p className="text-sm font-semibold text-slate-900">{buildRoundTitle(round, index)}</p>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <input
+                    type="text"
+                    list="round-type-suggestions"
+                    placeholder="Round type or name (Aptitude, Coding, Technical MCQ, HR Interview...)"
+                    className="w-full rounded-2xl border-slate-200"
+                    value={round.type}
+                    onChange={(e) => handleRoundChange(index, "type", e.target.value)}
+                    required
+                  />
+                </div>
+                <textarea
+                  rows="5"
+                  placeholder={`Questions asked in round ${index + 1}`}
+                  className="rounded-2xl border-slate-200 md:col-span-2"
+                  value={round.questions}
+                  onChange={(e) => handleRoundChange(index, "questions", e.target.value)}
+                  required
+                />
+              </div>
+            </div>
           ))}
+
+          <datalist id="round-type-suggestions">
+            {roundTypeSuggestions.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
 
           <textarea
             rows="4"
@@ -156,7 +214,8 @@ const SubmitFeedbackPage = () => {
             onChange={(e) => setFormData({ ...formData, struggles: e.target.value })}
           />
 
-          {message && <p className="md:col-span-2 text-sm text-emerald-600">{message}</p>}
+          {error && <p className="text-sm text-red-600 md:col-span-2">{error}</p>}
+          {message && <p className="text-sm text-emerald-600 md:col-span-2">{message}</p>}
           <button type="submit" className="rounded-2xl bg-brand-700 px-4 py-3 font-semibold text-white md:col-span-2">
             Submit Feedback
           </button>

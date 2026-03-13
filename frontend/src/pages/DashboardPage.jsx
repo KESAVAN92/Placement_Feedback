@@ -6,11 +6,18 @@ import api from "../services/api";
 const DashboardPage = () => {
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const loadCompanies = async () => {
-      const { data } = await api.get(`/companies?search=${encodeURIComponent(search)}`);
-      setCompanies(data);
+      try {
+        const { data } = await api.get(`/companies?search=${encodeURIComponent(search)}`);
+        setCompanies(data);
+        setError("");
+      } catch (err) {
+        setCompanies([]);
+        setError(err.response?.data?.message || "Unable to load companies.");
+      }
     };
 
     loadCompanies();
@@ -36,6 +43,7 @@ const DashboardPage = () => {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
       </section>
 
       {["Hardware", "Software"].map((category) => (

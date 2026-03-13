@@ -4,8 +4,6 @@ import Layout from "../components/Layout";
 import FeedbackCard from "../components/FeedbackCard";
 import api from "../services/api";
 
-const tabs = ["aptitude", "coding", "interview"];
-
 const formatDate = (value) =>
   new Date(value).toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -17,25 +15,58 @@ const CompanyPage = () => {
   const { name } = useParams();
   const companyName = decodeURIComponent(name);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "aptitude";
+  const requestedTab = searchParams.get("tab");
   const page = Number(searchParams.get("page") || 1);
   const sort = searchParams.get("sort") || "latest";
-  const [feedbackData, setFeedbackData] = useState({ items: [], pagination: {} });
+  const [feedbackData, setFeedbackData] = useState({ items: [], pagination: {}, availableRoundTypes: [] });
   const [questions, setQuestions] = useState([]);
+  const [error, setError] = useState("");
+
+  const tabs = feedbackData.availableRoundTypes || [];
+  const tabValues = tabs.map((tab) => tab.value);
+  const fallbackTab = tabValues[0] || "";
+  const activeTab = requestedTab && tabValues.includes(requestedTab) ? requestedTab : fallbackTab;
+  const tabKey = tabValues.join("|");
 
   useEffect(() => {
-    const loadData = async () => {
-      const [feedbackResponse, questionResponse] = await Promise.all([
-        api.get(`/feedback/company/${encodeURIComponent(companyName)}?page=${page}&sort=${sort}`),
-        api.get(`/feedback/questions/${encodeURIComponent(companyName)}/${activeTab}`)
-      ]);
-
-      setFeedbackData(feedbackResponse.data);
-      setQuestions(questionResponse.data);
+    const loadFeedback = async () => {
+      try {
+        const { data } = await api.get(`/feedback/company/${encodeURIComponent(companyName)}?page=${page}&sort=${sort}`);
+        setFeedbackData(data);
+        setError("");
+      } catch (err) {
+        setFeedbackData({ items: [], pagination: {}, availableRoundTypes: [] });
+        setError(err.response?.data?.message || "Unable to load company feedback.");
+      }
     };
 
-    loadData();
-  }, [companyName, page, sort, activeTab]);
+    loadFeedback();
+  }, [companyName, page, sort]);
+
+  useEffect(() => {
+    if (!tabs.length) {
+      setQuestions([]);
+      return;
+    }
+
+    if (!requestedTab || !tabValues.includes(requestedTab)) {
+      setSearchParams({ tab: fallbackTab, sort, page: 1 }, { replace: true });
+      return;
+    }
+
+    const loadQuestions = async () => {
+      try {
+        const { data } = await api.get(`/feedback/questions/${encodeURIComponent(companyName)}/${requestedTab}`);
+        setQuestions(data);
+        setError("");
+      } catch (err) {
+        setQuestions([]);
+        setError(err.response?.data?.message || "Unable to load question bank.");
+      }
+    };
+
+    loadQuestions();
+  }, [companyName, fallbackTab, requestedTab, setSearchParams, sort, tabKey]);
 
   return (
     <Layout>
@@ -49,13 +80,13 @@ const CompanyPage = () => {
             <select
               className="rounded-2xl border-slate-200"
               value={sort}
-              onChange={(e) => setSearchParams({ tab: activeTab, sort: e.target.value, page: 1 })}
+              onChange={(e) => setSearchParams(activeTab ? { tab: activeTab, sort: e.target.value, page: 1 } : { sort: e.target.value, page: 1 })}
             >
               <option value="latest">Latest first</option>
               <option value="oldest">Oldest first</option>
             </select>
             <Link
-              to={`/questions/${encodeURIComponent(companyName)}?tab=${activeTab}`}
+              to={activeTab ? `/questions/${encodeURIComponent(companyName)}?tab=${activeTab}` : `/questions/${encodeURIComponent(companyName)}`}
               className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
             >
               Open Questions
@@ -63,30 +94,34 @@ const CompanyPage = () => {
           </div>
         </div>
 
-        <div className="mt-8 flex gap-3 border-b border-slate-200 pb-4">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setSearchParams({ tab, sort, page: 1 })}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                activeTab === tab ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              {tab[0].toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
-        </div>
+        {tabs.length > 0 && (
+          <div className="mt-8 flex gap-3 overflow-x-auto border-b border-slate-200 pb-4">
+            {tabs.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setSearchParams({ tab: tab.value, sort, page: 1 })}
+                className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                  activeTab === tab.value ? "bg-brand-700 text-white" : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="mt-6 space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
           {questions.map((item, index) => (
             <div key={`${item.question}-${index}`} className="rounded-2xl bg-slate-50 p-4">
               <p className="text-sm font-medium text-slate-900">{item.question}</p>
               <p className="mt-2 text-xs text-slate-500">
-                ({item.location}, {formatDate(item.attendedDate)})
+                ({item.attendedCollegeCampus || "Campus not provided"}, {item.location}, {formatDate(item.attendedDate)})
               </p>
             </div>
           ))}
+          {tabs.length === 0 && <p className="text-sm text-slate-500">No round-specific questions available yet.</p>}
         </div>
       </section>
 
@@ -101,7 +136,7 @@ const CompanyPage = () => {
           <button
             type="button"
             disabled={page <= 1}
-            onClick={() => setSearchParams({ tab: activeTab, sort, page: page - 1 })}
+            onClick={() => setSearchParams(activeTab ? { tab: activeTab, sort, page: page - 1 } : { sort, page: page - 1 })}
             className="rounded-2xl bg-slate-200 px-4 py-2 text-sm disabled:opacity-50"
           >
             Previous
@@ -112,7 +147,7 @@ const CompanyPage = () => {
           <button
             type="button"
             disabled={page >= (feedbackData.pagination.pages || 1)}
-            onClick={() => setSearchParams({ tab: activeTab, sort, page: page + 1 })}
+            onClick={() => setSearchParams(activeTab ? { tab: activeTab, sort, page: page + 1 } : { sort, page: page + 1 })}
             className="rounded-2xl bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
           >
             Next

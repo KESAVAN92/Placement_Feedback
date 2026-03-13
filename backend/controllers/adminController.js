@@ -1,5 +1,6 @@
 const Feedback = require("../models/Feedback");
 const Company = require("../models/Company");
+const { normalizeFeedbackRecord } = require("../utils/feedbackHelpers");
 
 const getAllFeedbacks = async (req, res) => {
   try {
@@ -7,7 +8,7 @@ const getAllFeedbacks = async (req, res) => {
       .populate("studentId", "name email department year collegeName city")
       .sort({ submittedDate: -1 });
     const companies = await Company.find().sort({ category: 1, name: 1 });
-    return res.json({ feedbacks, companies });
+    return res.json({ feedbacks: feedbacks.map(normalizeFeedbackRecord), companies });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }

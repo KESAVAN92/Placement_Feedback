@@ -1,37 +1,55 @@
 const Feedback = require("../models/Feedback");
-
-const normalizeLines = (value) =>
-  (value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
+const {
+  normalizeLines,
+  normalizeRoundType,
+  buildRoundTitle,
+  getRoundDetails,
+  getQuestionBucket,
+  groupLegacyFieldsFromRounds,
+  normalizeFeedbackRecord,
+  questionTabs
+} = require("../utils/feedbackHelpers");
 
 const submitFeedback = async (req, res) => {
   try {
+    const requestedRounds = Math.min(5, Math.max(1, Number(req.body.rounds) || 1));
+    const roundDetails = Array.isArray(req.body.roundDetails)
+      ? req.body.roundDetails
+          .slice(0, requestedRounds)
+          .map((round, index) => {
+            const type = normalizeRoundType(round.type);
+            const questions = Array.isArray(round.questions)
+              ? round.questions.map((question) => String(question || "").trim()).filter(Boolean)
+              : normalizeLines(round.questions);
+
+            return {
+              type,
+              title: round.title?.trim() || buildRoundTitle(type, index),
+              questions
+            };
+          })
+          .filter((round) => round.type || round.questions.length > 0)
+      : [];
+    const legacyGroups = groupLegacyFieldsFromRounds(roundDetails);
+
     const feedback = await Feedback.create({
       studentId: req.user.id,
       companyName: req.body.companyName,
       category: req.body.category,
       location: req.body.location,
+      attendedCollegeCampus: req.body.attendedCollegeCampus,
       attendedDate: req.body.attendedDate,
-      rounds: req.body.rounds,
-      aptitudeQuestions: Array.isArray(req.body.aptitudeQuestions)
-        ? req.body.aptitudeQuestions.filter(Boolean)
-        : normalizeLines(req.body.aptitudeQuestions),
-      codingQuestions: Array.isArray(req.body.codingQuestions)
-        ? req.body.codingQuestions.filter(Boolean)
-        : normalizeLines(req.body.codingQuestions),
-      interviewQuestions: Array.isArray(req.body.interviewQuestions)
-        ? req.body.interviewQuestions.filter(Boolean)
-        : normalizeLines(req.body.interviewQuestions),
-      extraRoundQuestions: Array.isArray(req.body.extraRoundQuestions)
-        ? req.body.extraRoundQuestions.flatMap(normalizeLines)
-        : normalizeLines(req.body.extraRoundQuestions),
+      rounds: requestedRounds,
+      roundDetails,
+      aptitudeQuestions: legacyGroups.aptitudeQuestions,
+      codingQuestions: legacyGroups.codingQuestions,
+      interviewQuestions: legacyGroups.interviewQuestions,
+      extraRoundQuestions: [],
       tips: req.body.tips,
       struggles: req.body.struggles
     });
 
-    return res.status(201).json(feedback);
+    return res.status(201).json(normalizeFeedbackRecord(feedback));
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -55,7 +73,8 @@ const getCompanyFeedback = async (req, res) => {
     ]);
 
     return res.json({
-      items,
+      items: items.map(normalizeFeedbackRecord),
+      availableRoundTypes: questionTabs,
       pagination: {
         page,
         limit,
@@ -68,29 +87,26 @@ const getCompanyFeedback = async (req, res) => {
   }
 };
 
-const typeMap = {
-  aptitude: "aptitudeQuestions",
-  coding: "codingQuestions",
-  interview: "interviewQuestions"
-};
-
 const getCompanyQuestions = async (req, res) => {
   try {
-    const field = typeMap[req.params.type.toLowerCase()];
-
-    if (!field) {
-      return res.status(400).json({ message: "Invalid question type" });
-    }
+    const requestedType = normalizeRoundType(req.params.type);
 
     const feedbacks = await Feedback.find({ companyName: req.params.company }).sort({ attendedDate: -1 });
     const questions = feedbacks.flatMap((feedback) =>
-      feedback[field].map((question) => ({
-        question,
-        companyName: feedback.companyName,
-        category: feedback.category,
-        location: feedback.location,
-        attendedDate: feedback.attendedDate
-      }))
+      getRoundDetails(feedback)
+        .filter((round) => getQuestionBucket(round.type) === requestedType)
+        .flatMap((round) =>
+          round.questions.map((question) => ({
+            question,
+            roundTitle: round.title,
+            roundType: round.type,
+            companyName: feedback.companyName,
+            category: feedback.category,
+            location: feedback.location,
+            attendedCollegeCampus: feedback.attendedCollegeCampus,
+            attendedDate: feedback.attendedDate
+          }))
+        )
     );
 
     return res.json(questions);

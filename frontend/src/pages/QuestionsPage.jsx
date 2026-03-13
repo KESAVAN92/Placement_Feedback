@@ -4,7 +4,11 @@ import { useParams, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import api from "../services/api";
 
-const tabs = ["aptitude", "coding", "interview"];
+const questionTabs = [
+  { value: "aptitude", label: "Aptitude" },
+  { value: "coding", label: "Coding" },
+  { value: "interview", label: "Interview" }
+];
 
 const formatDate = (value) =>
   new Date(value).toLocaleDateString("en-GB", {
@@ -81,21 +85,35 @@ const QuestionsPage = () => {
   const { name } = useParams();
   const companyName = decodeURIComponent(name);
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "aptitude";
+  const requestedTab = searchParams.get("tab");
+  const activeTab = questionTabs.some((tab) => tab.value === requestedTab) ? requestedTab : questionTabs[0].value;
   const [questions, setQuestions] = useState([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    if (requestedTab !== activeTab) {
+      setSearchParams({ tab: activeTab }, { replace: true });
+      return;
+    }
+
     const loadQuestions = async () => {
-      const { data } = await api.get(`/feedback/questions/${encodeURIComponent(companyName)}/${activeTab}`);
-      setQuestions(data);
+      try {
+        const { data } = await api.get(`/feedback/questions/${encodeURIComponent(companyName)}/${activeTab}`);
+        setQuestions(data);
+        setError("");
+      } catch (err) {
+        setQuestions([]);
+        setError(err.response?.data?.message || "Unable to load question bank.");
+      }
     };
 
     loadQuestions();
-  }, [companyName, activeTab]);
+  }, [activeTab, companyName, requestedTab, setSearchParams]);
 
   const downloadPdf = async () => {
     const doc = new jsPDF();
-    const title = `${activeTab[0].toUpperCase() + activeTab.slice(1)} Questions - ${companyName}`;
+    const activeLabel = questionTabs.find((tab) => tab.value === activeTab)?.label || activeTab;
+    const title = `${activeLabel} Questions - ${companyName}`;
     const logoAsset = await loadLogoAsset();
     addPdfPageFrame(doc, title, logoAsset);
 
@@ -129,30 +147,32 @@ const QuestionsPage = () => {
           </button>
         </div>
 
-        <div className="mt-8 flex gap-3">
-          {tabs.map((tab) => (
+        <div className="mt-8 flex gap-3 overflow-x-auto">
+          {questionTabs.map((tab) => (
             <button
-              key={tab}
+              key={tab.value}
               type="button"
-              onClick={() => setSearchParams({ tab })}
+              onClick={() => setSearchParams({ tab: tab.value })}
               className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                activeTab === tab ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                activeTab === tab.value ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
               }`}
             >
-              {tab[0].toUpperCase() + tab.slice(1)}
+              {tab.label}
             </button>
           ))}
         </div>
 
         <div className="mt-8 space-y-4">
+          {error && <p className="text-sm text-red-600">{error}</p>}
           {questions.map((item, index) => (
             <div key={`${item.question}-${index}`} className="rounded-2xl border border-slate-200 p-5">
               <p className="font-medium text-slate-900">{item.question}</p>
               <p className="mt-2 text-sm text-slate-500">
-                ({item.location}, {formatDate(item.attendedDate)})
+                ({item.attendedCollegeCampus || "Campus not provided"}, {item.location}, {formatDate(item.attendedDate)})
               </p>
             </div>
           ))}
+          {questions.length === 0 && <p className="text-sm text-slate-500">No questions have been submitted in this section yet.</p>}
         </div>
       </section>
     </Layout>

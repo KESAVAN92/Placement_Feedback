@@ -6,8 +6,16 @@ const feedbackSchema = new mongoose.Schema(
     companyName: { type: String, required: true, trim: true, index: true },
     category: { type: String, required: true, enum: ["Software", "Hardware"] },
     location: { type: String, required: true, trim: true },
+    attendedCollegeCampus: { type: String, required: true, trim: true },
     attendedDate: { type: Date, required: true },
     rounds: { type: Number, required: true, min: 1, max: 5 },
+    roundDetails: [
+      {
+        title: { type: String, trim: true, default: "" },
+        type: { type: String, trim: true, default: "" },
+        questions: { type: [String], default: [] }
+      }
+    ],
     aptitudeQuestions: { type: [String], default: [] },
     codingQuestions: { type: [String], default: [] },
     interviewQuestions: { type: [String], default: [] },

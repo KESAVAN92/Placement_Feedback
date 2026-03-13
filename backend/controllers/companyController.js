@@ -43,6 +43,9 @@ const createCompany = async (req, res) => {
     const company = await Company.create(req.body);
     return res.status(201).json(company);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: "Company already exists" });
+    }
     return res.status(500).json({ message: error.message });
   }
 };
