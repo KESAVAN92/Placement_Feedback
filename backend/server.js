@@ -12,20 +12,23 @@ const { seedCompanies } = require("./controllers/companyController");
 dotenv.config();
 
 const app = express();
+const normalizeOrigin = (origin = "") => origin.trim().replace(/\/+$/, "");
 const allowedOrigins = (
   process.env.CLIENT_URLS ||
   process.env.CLIENT_URL ||
   "http://localhost:3000,http://localhost:3001"
 )
   .split(",")
-  .map((origin) => origin.trim())
+  .map((origin) => normalizeOrigin(origin))
   .filter(Boolean);
 const isLocalhostOrigin = (origin) => /^http:\/\/localhost:\d+$/.test(origin);
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || isLocalhostOrigin(origin) || allowedOrigins.includes(origin)) {
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      if (!origin || isLocalhostOrigin(origin) || allowedOrigins.includes(normalizedOrigin)) {
         return callback(null, true);
       }
 
