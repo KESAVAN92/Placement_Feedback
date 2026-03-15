@@ -26,6 +26,7 @@ const Header = () => {
             <>
               <Link to="/dashboard">Home</Link>
               <Link to="/submit-feedback">Submit Feedback</Link>
+              <Link to="/my-feedback">My Feedback</Link>
               <Link to="/dashboard">Companies</Link>
             </>
           )}

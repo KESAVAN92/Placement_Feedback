@@ -8,6 +8,7 @@ import SubmitFeedbackPage from "./pages/SubmitFeedbackPage";
 import CompanyPage from "./pages/CompanyPage";
 import QuestionsPage from "./pages/QuestionsPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import MyFeedbackPage from "./pages/MyFeedbackPage";
 
 const App = () => (
   <Routes>
@@ -27,6 +28,22 @@ const App = () => (
       element={
         <ProtectedRoute role="student">
           <SubmitFeedbackPage />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/edit-feedback/:id"
+      element={
+        <ProtectedRoute role="student">
+          <SubmitFeedbackPage />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/my-feedback"
+      element={
+        <ProtectedRoute role="student">
+          <MyFeedbackPage />
         </ProtectedRoute>
       }
     />

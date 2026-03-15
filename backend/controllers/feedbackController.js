@@ -10,46 +10,110 @@ const {
   questionTabs
 } = require("../utils/feedbackHelpers");
 
+const buildFeedbackPayload = (payload, studentId) => {
+  const requestedRounds = Math.min(5, Math.max(1, Number(payload.rounds) || 1));
+  const roundDetails = Array.isArray(payload.roundDetails)
+    ? payload.roundDetails
+        .slice(0, requestedRounds)
+        .map((round, index) => {
+          const type = normalizeRoundType(round.type);
+          const questions = Array.isArray(round.questions)
+            ? round.questions.map((question) => String(question || "").trim()).filter(Boolean)
+            : normalizeLines(round.questions);
+
+          return {
+            type,
+            title: round.title?.trim() || buildRoundTitle(type, index),
+            questions
+          };
+        })
+        .filter((round) => round.type || round.questions.length > 0)
+    : [];
+  const legacyGroups = groupLegacyFieldsFromRounds(roundDetails);
+
+  return {
+    studentId,
+    companyName: payload.companyName,
+    category: payload.category,
+    location: payload.location,
+    attendedCollegeCampus: payload.attendedCollegeCampus,
+    attendedDate: payload.attendedDate,
+    rounds: requestedRounds,
+    roundDetails,
+    aptitudeQuestions: legacyGroups.aptitudeQuestions,
+    codingQuestions: legacyGroups.codingQuestions,
+    interviewQuestions: legacyGroups.interviewQuestions,
+    extraRoundQuestions: [],
+    tips: payload.tips,
+    struggles: payload.struggles
+  };
+};
+
 const submitFeedback = async (req, res) => {
   try {
-    const requestedRounds = Math.min(5, Math.max(1, Number(req.body.rounds) || 1));
-    const roundDetails = Array.isArray(req.body.roundDetails)
-      ? req.body.roundDetails
-          .slice(0, requestedRounds)
-          .map((round, index) => {
-            const type = normalizeRoundType(round.type);
-            const questions = Array.isArray(round.questions)
-              ? round.questions.map((question) => String(question || "").trim()).filter(Boolean)
-              : normalizeLines(round.questions);
-
-            return {
-              type,
-              title: round.title?.trim() || buildRoundTitle(type, index),
-              questions
-            };
-          })
-          .filter((round) => round.type || round.questions.length > 0)
-      : [];
-    const legacyGroups = groupLegacyFieldsFromRounds(roundDetails);
-
-    const feedback = await Feedback.create({
-      studentId: req.user.id,
-      companyName: req.body.companyName,
-      category: req.body.category,
-      location: req.body.location,
-      attendedCollegeCampus: req.body.attendedCollegeCampus,
-      attendedDate: req.body.attendedDate,
-      rounds: requestedRounds,
-      roundDetails,
-      aptitudeQuestions: legacyGroups.aptitudeQuestions,
-      codingQuestions: legacyGroups.codingQuestions,
-      interviewQuestions: legacyGroups.interviewQuestions,
-      extraRoundQuestions: [],
-      tips: req.body.tips,
-      struggles: req.body.struggles
-    });
+    const feedback = await Feedback.create(buildFeedbackPayload(req.body, req.user.id));
 
     return res.status(201).json(normalizeFeedbackRecord(feedback));
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const getStudentFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.find({ studentId: req.user.id }).sort({ submittedDate: -1, createdAt: -1 });
+
+    return res.json({
+      total: feedback.length,
+      items: feedback.map(normalizeFeedbackRecord)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const getStudentFeedbackById = async (req, res) => {
+  try {
+    const feedback = await Feedback.findOne({ _id: req.params.id, studentId: req.user.id });
+
+    if (!feedback) {
+      return res.status(404).json({ message: "Feedback not found" });
+    }
+
+    return res.json(normalizeFeedbackRecord(feedback));
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const updateStudentFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.findOne({ _id: req.params.id, studentId: req.user.id });
+
+    if (!feedback) {
+      return res.status(404).json({ message: "Feedback not found" });
+    }
+
+    Object.assign(feedback, buildFeedbackPayload(req.body, req.user.id));
+    await feedback.save();
+
+    return res.json(normalizeFeedbackRecord(feedback));
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const deleteStudentFeedback = async (req, res) => {
+  try {
+    const feedback = await Feedback.findOne({ _id: req.params.id, studentId: req.user.id });
+
+    if (!feedback) {
+      return res.status(404).json({ message: "Feedback not found" });
+    }
+
+    await feedback.deleteOne();
+
+    return res.json({ message: "Feedback deleted successfully" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
@@ -115,4 +179,12 @@ const getCompanyQuestions = async (req, res) => {
   }
 };
 
-module.exports = { submitFeedback, getCompanyFeedback, getCompanyQuestions };
+module.exports = {
+  submitFeedback,
+  getCompanyFeedback,
+  getCompanyQuestions,
+  getStudentFeedback,
+  getStudentFeedbackById,
+  updateStudentFeedback,
+  deleteStudentFeedback
+};
